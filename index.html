@@ -241,6 +241,10 @@
     gap: 12px;
     align-items: flex-start;
   }
+  .resource-card.trusted {
+    border-color: rgba(108, 255, 170, 0.3);
+    background: rgba(108, 255, 170, 0.04);
+  }
   .resource-icon {
     font-size: 20px;
     flex-shrink: 0;
@@ -248,35 +252,73 @@
     text-align: center;
   }
   .resource-body { flex: 1; min-width: 0; }
+  .resource-header {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+  }
   .resource-type {
     font-size: 10px;
     color: #6c8dff;
     text-transform: uppercase;
     letter-spacing: 1px;
-    margin-bottom: 4px;
     font-weight: 600;
+  }
+  .trust-badge {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 8px;
+    background: rgba(108, 255, 170, 0.15);
+    color: #6cffaa;
+    border: 1px solid rgba(108, 255, 170, 0.3);
+    font-weight: 500;
+  }
+  .trust-badge.untrusted {
+    background: rgba(160, 160, 192, 0.1);
+    color: #a0a0c0;
+    border-color: rgba(160, 160, 192, 0.2);
   }
   .resource-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; word-break: break-word; }
   .resource-desc { font-size: 12px; color: #a0a0c0; margin-bottom: 6px; }
+  .credibility {
+    font-size: 11px;
+    color: #6cffaa;
+    background: rgba(108, 255, 170, 0.08);
+    padding: 3px 8px;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    display: inline-block;
+  }
   .resource-link {
     display: inline-block;
     font-size: 12px;
     color: #6c8dff;
     text-decoration: none;
     word-break: break-all;
-  }
-  .resource-link:hover { text-decoration: underline; }
-  .resource-search {
-    display: inline-block;
-    font-size: 11px;
-    color: #ff9b6c;
-    background: rgba(255,155,108,0.1);
-    padding: 3px 8px;
-    border-radius: 6px;
     margin-top: 4px;
   }
-  .resource-search a { color: inherit; text-decoration: none; }
-  .resource-search a:hover { text-decoration: underline; }
+  .resource-link:hover { text-decoration: underline; }
+
+  .grounding-footer {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: rgba(108, 141, 255, 0.06);
+    border-left: 3px solid rgba(108, 141, 255, 0.4);
+    border-radius: 6px;
+  }
+  .grounding-label {
+    font-size: 11px;
+    color: #a0baff;
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .search-suggestions { font-size: 11px; }
+  .search-suggestions a {
+    color: #6c8dff;
+    text-decoration: none;
+  }
 
   .disclaimer {
     font-size: 11px;
@@ -387,7 +429,7 @@ const SYSTEM_PROMPT = `당신은 한국과 세계의 모든 분야 도서에 정
 
 【중요 원칙】
 
-1. **장르 적응**: 책의 장르와 성격에 따라 분석 섹션의 명칭을 달리합니다. 다음 예시를 참고하되, 책에 가장 맞는 명칭을 자유롭게 만드세요.
+1. **장르 적응**: 책의 장르와 성격에 따라 분석 섹션의 명칭을 달리합니다.
    - 소설/문학 → "문학사적 위치"
    - 철학·사상 → "사상사적 좌표"
    - 경제·경영 → "시장·산업적 맥락"
@@ -406,28 +448,48 @@ const SYSTEM_PROMPT = `당신은 한국과 세계의 모든 분야 도서에 정
 3. **추천 도서 3종 구성**:
    - similar (유사): 같은 주제·정서를 더 깊이 탐구한 책
    - contrast (대조): 같은 주제를 반대 입장에서 다룬 책
-   - deeper (심화): 이 책의 이론적·역사적 배경을 이해할 수 있는 책
+   - deeper (심화): 이론적·역사적 배경을 이해할 수 있는 책
 
-4. **참조 자료 (매우 중요)**: 비평적 시각을 보완할 외부 자료를 추천합니다.
+4. **참조 자료 — Google Search Grounding 적극 활용 (핵심 요구사항)**:
 
-   ⚠️ URL 환각 방지 규칙:
-   - URL은 100% 확실히 존재하고 안정적으로 유지될 자료만 제공하세요.
-   - 불확실하면 URL을 절대 만들지 말고, "search_query" 필드에 검색 쿼리만 제공하세요.
-   - 검증된 URL만 허용: 위키백과, 주요 언론사 메인 페이지(NYT, Guardian, 조선·중앙·한겨레·경향 등), 출판사 공식 페이지, 저자 공식 웹사이트, 잘 알려진 학자/비평가의 공식 페이지
-   - 확실하지 않은 모든 경우 → URL 대신 search_query 사용
+   당신은 google_search 도구를 사용할 수 있습니다. 이 도구를 적극 활용하여 다음을 수행하세요:
 
-   자료 유형(type):
-   - "academic": 논문, 학술 자료 → 보통 search_query만 제공 (Google Scholar 등에서 찾도록)
-   - "video": YouTube 영상, 강연 → 채널명과 search_query 위주
-   - "news": 언론 기사 → 매체명 명시
-   - "blog": 비평가 블로그, 개인 사이트
-   - "social": X(트위터), SNS 토론
-   - "review": 독립 서평지, 문학잡지
+   **검색 전략 (우선순위 순서)**:
+   1순위 - **학술 자료** (반드시 최소 2개): 다음 검색 쿼리를 직접 실행하세요
+      - "[책 제목] [저자] 논문"
+      - "[책 제목] [저자] scholar"
+      - "[책 제목] 학술 비평"
+      - "[저자명] criticism academic"
+
+   2순위 - **YouTube 영상·강연**: 다음 검색 쿼리 실행
+      - "[책 제목] [저자] 강연"
+      - "[책 제목] 리뷰 youtube"
+      - "[저자명] interview lecture"
+
+   3순위 - **언론 기사 (주요 매체)**: 다음 검색 쿼리 실행
+      - "[책 제목] [저자] 한겨레 OR 조선일보 OR 중앙일보 OR 경향신문"
+      - "[책 제목] review NYT OR Guardian OR New Yorker"
+
+   4순위 - **서평지·블로그**: 채널예스, 라디오북, 알라딘 서재 등
+
+   **신뢰성 평가 기준**:
+   - 학술 자료: dbpia.co.kr, kiss.kstudy.com, riss.kr, scholar.google.com, jstor.org, springer.com, .edu, .ac.kr 도메인 우대
+   - 언론: 주요 일간지·주간지·전문지 우대 (블로그성 매체 회피)
+   - YouTube: 구독자/조회수 많은 채널 (학술 채널, 출판사 공식 채널, 유명 비평가) 우대
+   - 출판사 공식·저자 공식 사이트 우대
+
+   **반드시 지킬 것**:
+   - 검색 결과에서 찾은 **실제 URL만** 제공하세요. URL을 절대 만들어내지 마세요.
+   - 검색 결과가 없거나 신뢰성이 의심되면 그 항목은 빈 배열로 두세요. 가짜 URL을 만들지 마세요.
+   - 학술 자료는 반드시 2개 이상 포함하도록 노력하세요 (사용자 우선순위).
+   - 영문/한글 자료 모두 검색하세요 (책이 번역서면 원서 비평도 함께).
 
 5. **솔직함**: 식별 불가능하면 그렇게 답하고, 추측은 "추정"임을 명시합니다.
 
 【출력 형식】
-반드시 다음 JSON 형식만 따르세요. 마크다운 코드블록 사용 금지.
+JSON 형식만 사용하세요. 단, google_search 도구를 사용해야 하므로 일반 텍스트 응답으로 JSON을 출력하세요 (responseMimeType은 grounding과 함께 사용 불가).
+
+응답은 반드시 다음 형식의 JSON으로만 시작하고 끝나야 하며, JSON 앞뒤에 어떤 설명도 추가하지 마세요. 마크다운 코드블록도 사용하지 마세요:
 
 {
   "identified": true 또는 false,
@@ -436,10 +498,10 @@ const SYSTEM_PROMPT = `당신은 한국과 세계의 모든 분야 도서에 정
   "author": "저자명",
   "publisher_year": "출판사, 출판연도",
   "genre": "구체적 장르 분류",
-  "context_section_label": "이 책에 맞는 맥락 섹션 명칭 (예: 문학사적 위치, 사상사적 좌표 등)",
+  "context_section_label": "이 책에 맞는 맥락 섹션 명칭",
   "summary": "2-3문장 핵심 소개",
-  "context_analysis": "위 context_section_label에 해당하는 3-4문장 분석",
-  "critical_view": "비평적 평가, 호평과 비판 균형 (3-4문장)",
+  "context_analysis": "3-4문장 분석",
+  "critical_view": "비평적 평가 (3-4문장)",
   "recommendations": [
     { "type": "similar", "title": "...", "author": "...", "reason": "..." },
     { "type": "contrast", "title": "...", "author": "...", "reason": "..." },
@@ -448,16 +510,17 @@ const SYSTEM_PROMPT = `당신은 한국과 세계의 모든 분야 도서에 정
   "resources": [
     {
       "type": "academic|video|news|blog|social|review",
-      "title": "자료 제목",
-      "description": "왜 참조할 가치가 있는지 1문장",
-      "url": "확실한 URL 또는 null",
-      "search_query": "URL이 null일 때 검색 쿼리"
+      "title": "자료의 실제 제목",
+      "description": "이 자료의 핵심 가치 (1문장)",
+      "url": "검색으로 확인한 실제 URL",
+      "source_name": "출처 명칭 (예: DBpia, YouTube - 채널명, 한겨레)",
+      "credibility_signal": "신뢰도 근거 (예: '학술 데이터베이스 등재', '주요 일간지', '구독자 50만 채널' 등)"
     }
   ],
-  "reading_tip": "이 책을 가장 잘 읽는 방법 (2-3문장)"
+  "reading_tip": "이 책을 잘 읽는 방법 (2-3문장)"
 }
 
-자료(resources)는 최소 4개, 최대 6개. 가능하면 다양한 유형으로 구성.
+resources는 최소 4개, 최대 7개. 학술 자료를 최소 2개 포함. 검색으로 확인된 실제 URL만 사용.
 
 식별 불가능한 경우:
 {
@@ -466,9 +529,15 @@ const SYSTEM_PROMPT = `당신은 한국과 세계의 모든 분야 도서에 정
   "what_i_see": "사진에서 본 단서"
 }`;
 
-const USER_PROMPT = `이 사진을 분석해주세요. 책 표지 또는 서점 매대 사진일 수 있습니다.
-여러 권이 보이면 가장 두드러진 한 권을 골라주세요.
-JSON 형식만으로 답하고, 마크다운 코드블록은 절대 사용하지 마세요.`;
+const USER_PROMPT = `이 사진의 책을 분석해주세요.
+
+중요: google_search 도구를 적극 사용해서 다음을 수행하세요:
+1. 책 식별 후, 그 책에 대한 학술 자료를 최소 2회 검색 (Google Scholar, DBpia 등)
+2. YouTube 강연·리뷰 영상 검색
+3. 주요 언론사 기사 검색
+4. 각 자료의 실제 URL을 검색 결과에서 추출
+
+검색이 끝나면 JSON 형식만으로 응답하세요. JSON 앞뒤에 다른 텍스트나 마크다운 코드블록을 절대 사용하지 마세요.`;
 
 const $ = (id) => document.getElementById(id);
 let currentImageData = null;
@@ -637,27 +706,36 @@ async function analyzeBook() {
         { text: USER_PROMPT }
       ]
     }],
+    // Grounding with Google Search 활성화
+    tools: [{ googleSearch: {} }],
     generationConfig: {
-      temperature: 0.7,
-      maxOutputTokens: 8192,
-      responseMimeType: 'application/json',
-      thinkingConfig: { thinkingBudget: 0 }
+      temperature: 0.5,  // grounding 사용 시 일관성 위해 낮춤
+      maxOutputTokens: 8192
+      // 주의: responseMimeType은 grounding과 함께 사용할 수 없으므로 제거
+      // thinkingConfig도 도구 사용과 호환성 위해 제거
     }
   };
 
   try {
-    const responseText = await callGeminiWithFallback(apiKey, requestBody);
+    const { responseText, groundingMetadata } = await callGeminiWithFallback(apiKey, requestBody);
 
-    const cleaned = responseText.replace(/```json\s*|```\s*/g, '').trim();
+    // JSON 추출 강화 (텍스트 안에 섞여 있을 수 있음)
+    const jsonText = extractJsonFromText(responseText);
+
     let result;
     try {
-      result = JSON.parse(cleaned);
+      result = JSON.parse(jsonText);
     } catch (parseErr) {
-      result = tryRecoverTruncatedJson(cleaned);
+      result = tryRecoverTruncatedJson(jsonText);
       if (!result) {
-        throw new Error(`응답이 너무 길어 JSON이 잘렸습니다. 다시 시도해주세요. (원본 오류: ${parseErr.message})`);
+        throw new Error(`응답에서 JSON을 파싱할 수 없습니다. 다시 시도해주세요. (원본 오류: ${parseErr.message})`);
       }
-      showError('⚠️ 응답이 일부 잘렸지만 복구해서 표시합니다. 일부 항목(특히 끝부분)이 누락될 수 있어요.');
+      showError('⚠️ 응답이 일부 잘렸지만 복구해서 표시합니다. 일부 항목이 누락될 수 있어요.');
+    }
+
+    // Grounding 메타데이터를 결과에 병합 (검증된 출처 정보)
+    if (groundingMetadata) {
+      result._groundingMetadata = groundingMetadata;
     }
 
     renderResult(result);
@@ -669,6 +747,22 @@ async function analyzeBook() {
     $('loading').classList.add('hidden');
     updateLoadingStatus('');
   }
+}
+
+// JSON 추출 (응답 텍스트에 JSON이 다른 텍스트와 섞여 있을 때)
+function extractJsonFromText(text) {
+  // 마크다운 코드블록 제거
+  let cleaned = text.replace(/```json\s*|```\s*/g, '').trim();
+
+  // 첫 { 부터 마지막 } 까지 추출
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    return cleaned.slice(firstBrace, lastBrace + 1);
+  }
+
+  return cleaned;
 }
 
 // ====== 재시도 + 모델 폴백 ======
@@ -686,9 +780,8 @@ async function callGeminiWithFallback(apiKey, requestBody) {
 
     for (let attempt = 0; attempt <= MAX_RETRIES_PER_MODEL; attempt++) {
       try {
-        // 상태 표시
         if (modelIdx === 0 && attempt === 0) {
-          updateLoadingStatus('책을 살펴보고 있습니다…');
+          updateLoadingStatus('Google 검색으로 자료를 수집하고 있습니다…');
         } else if (attempt > 0) {
           updateLoadingStatus(`서버 혼잡으로 재시도 중… (${model}, ${attempt}/${MAX_RETRIES_PER_MODEL})`);
         } else {
@@ -707,10 +800,12 @@ async function callGeminiWithFallback(apiKey, requestBody) {
           const responseText = data.candidates?.[0]?.content?.parts
             ?.filter(p => p.text).map(p => p.text).join('') || '';
           if (!responseText) throw new Error('빈 응답을 받았습니다.');
-          return responseText;
+
+          // Grounding 메타데이터도 함께 반환
+          const groundingMetadata = data.candidates?.[0]?.groundingMetadata || null;
+          return { responseText, groundingMetadata };
         }
 
-        // 응답 에러 처리
         const errText = await response.text();
         let errMsg = `API 오류 (${response.status})`;
         try {
@@ -718,23 +813,20 @@ async function callGeminiWithFallback(apiKey, requestBody) {
           errMsg += `: ${errJson.error?.message || errText}`;
         } catch { errMsg += `: ${errText}`; }
 
-        // 재시도 불가능한 오류면 즉시 throw (401, 403, 400 등)
         if (!RETRYABLE_STATUS.includes(response.status)) {
           throw new Error(errMsg);
         }
 
         lastError = new Error(errMsg);
 
-        // 재시도 가능한 오류 → 백오프 후 재시도
         if (attempt < MAX_RETRIES_PER_MODEL) {
           const delay = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 500, 8000);
           await sleep(delay);
         }
       } catch (err) {
-        // 네트워크 오류 등
         lastError = err;
         if (err.message.includes('API 오류') && !RETRYABLE_STATUS.some(s => err.message.includes(`(${s})`))) {
-          throw err;  // 인증 오류 등은 즉시 throw
+          throw err;
         }
         if (attempt < MAX_RETRIES_PER_MODEL) {
           const delay = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 500, 8000);
@@ -742,10 +834,8 @@ async function callGeminiWithFallback(apiKey, requestBody) {
         }
       }
     }
-    // 이 모델 재시도 모두 실패 → 다음 모델로
   }
 
-  // 모든 모델 실패
   throw new Error(
     `모든 모델에서 실패했습니다. Google 서버가 일시적으로 혼잡한 상태입니다. ` +
     `잠시 후 다시 시도해주세요.\n마지막 오류: ${lastError?.message || '알 수 없음'}`
@@ -802,59 +892,209 @@ function tryRecoverTruncatedJson(text) {
 // ====== 결과 렌더링 ======
 
 const RESOURCE_META = {
-  academic: { icon: '📄', label: '논문·학술' },
-  video: { icon: '🎥', label: '영상·강연' },
-  news: { icon: '📰', label: '언론·기사' },
-  blog: { icon: '✍️', label: '블로그·비평' },
-  social: { icon: '💬', label: 'SNS·토론' },
-  review: { icon: '📖', label: '서평지' }
+  academic: { icon: '📄', label: '논문·학술', priority: 1 },
+  review:   { icon: '📖', label: '서평지',    priority: 2 },
+  news:     { icon: '📰', label: '언론·기사', priority: 3 },
+  video:    { icon: '🎥', label: '영상·강연', priority: 4 },
+  blog:     { icon: '✍️', label: '블로그·비평', priority: 5 },
+  social:   { icon: '💬', label: 'SNS·토론', priority: 6 }
 };
 
-function buildSearchUrl(type, query) {
-  const q = encodeURIComponent(query);
-  switch (type) {
-    case 'academic': return `https://scholar.google.com/scholar?q=${q}`;
-    case 'video':    return `https://www.youtube.com/results?search_query=${q}`;
-    case 'news':     return `https://www.google.com/search?q=${q}&tbm=nws`;
-    case 'social':   return `https://twitter.com/search?q=${q}`;
-    case 'review':
-    case 'blog':
-    default:         return `https://www.google.com/search?q=${q}`;
+// 신뢰 도메인 화이트리스트 (가산점)
+const TRUSTED_DOMAINS = {
+  // 학술 (최고 신뢰도)
+  'scholar.google.com': { weight: 10, label: 'Google Scholar' },
+  'dbpia.co.kr': { weight: 10, label: 'DBpia (국내 학술)' },
+  'kiss.kstudy.com': { weight: 10, label: 'KISS (국내 학술)' },
+  'riss.kr': { weight: 10, label: 'RISS (학술 통합)' },
+  'jstor.org': { weight: 10, label: 'JSTOR' },
+  'springer.com': { weight: 10, label: 'Springer' },
+  'wiley.com': { weight: 10, label: 'Wiley' },
+  'sciencedirect.com': { weight: 10, label: 'ScienceDirect' },
+  'cambridge.org': { weight: 10, label: 'Cambridge' },
+  'oup.com': { weight: 10, label: 'Oxford UP' },
+  'academic.oup.com': { weight: 10, label: 'Oxford Academic' },
+  'mla.org': { weight: 9, label: 'MLA' },
+  'jkais99.org': { weight: 8, label: '한국학술지인용색인' },
+
+  // 언론 (한국)
+  'hani.co.kr': { weight: 8, label: '한겨레' },
+  'chosun.com': { weight: 8, label: '조선일보' },
+  'joongang.co.kr': { weight: 8, label: '중앙일보' },
+  'donga.com': { weight: 8, label: '동아일보' },
+  'khan.co.kr': { weight: 8, label: '경향신문' },
+  'hankyung.com': { weight: 7, label: '한국경제' },
+  'mk.co.kr': { weight: 7, label: '매일경제' },
+  'pressian.com': { weight: 7, label: '프레시안' },
+  'ohmynews.com': { weight: 7, label: '오마이뉴스' },
+
+  // 언론 (해외)
+  'nytimes.com': { weight: 9, label: 'NYT' },
+  'theguardian.com': { weight: 9, label: 'The Guardian' },
+  'newyorker.com': { weight: 9, label: 'The New Yorker' },
+  'nybooks.com': { weight: 10, label: 'NY Review of Books' },
+  'lrb.co.uk': { weight: 10, label: 'London Review of Books' },
+  'theatlantic.com': { weight: 8, label: 'The Atlantic' },
+  'bbc.com': { weight: 8, label: 'BBC' },
+  'wsj.com': { weight: 8, label: 'WSJ' },
+
+  // 서평지·문학지
+  'yes24.com': { weight: 7, label: 'YES24' },
+  'aladin.co.kr': { weight: 7, label: '알라딘' },
+  'changbi.com': { weight: 8, label: '창비' },
+  'munhak.com': { weight: 8, label: '문학동네' },
+  'minumsa.com': { weight: 7, label: '민음사' },
+
+  // 영상
+  'youtube.com': { weight: 6, label: 'YouTube' },
+  'youtu.be': { weight: 6, label: 'YouTube' },
+  'ted.com': { weight: 9, label: 'TED' },
+
+  // 백과·참고
+  'ko.wikipedia.org': { weight: 5, label: '위키백과' },
+  'en.wikipedia.org': { weight: 5, label: 'Wikipedia' },
+  'britannica.com': { weight: 7, label: 'Britannica' }
+};
+
+function getDomainInfo(url) {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, '');
+
+    // 정확한 매치
+    if (TRUSTED_DOMAINS[host]) {
+      return { ...TRUSTED_DOMAINS[host], domain: host, trusted: true };
+    }
+
+    // 부분 매치 (서브도메인 등)
+    for (const [trustedHost, info] of Object.entries(TRUSTED_DOMAINS)) {
+      if (host.endsWith('.' + trustedHost) || host === trustedHost) {
+        return { ...info, domain: host, trusted: true };
+      }
+    }
+
+    // 학술 도메인 패턴
+    if (/\.(ac\.kr|edu|edu\.[a-z]+|gov)$/.test(host)) {
+      return { weight: 7, label: '학술·기관', domain: host, trusted: true };
+    }
+
+    return { weight: 3, label: host, domain: host, trusted: false };
+  } catch {
+    return null;
   }
 }
 
-function renderResources(resources) {
-  if (!resources || resources.length === 0) return '';
+function isValidUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  if (!/^https?:\/\//.test(url)) return false;
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
-  const cards = resources.map(r => {
-    const meta = RESOURCE_META[r.type] || { icon: '🔗', label: '자료' };
-    const hasUrl = r.url && r.url !== 'null' && /^https?:\/\//.test(r.url);
-
-    let linkHtml = '';
-    if (hasUrl) {
-      linkHtml = `<a class="resource-link" href="${escapeAttr(r.url)}" target="_blank" rel="noopener">${escapeHtml(r.url)} ↗</a>`;
-    } else if (r.search_query) {
-      const searchUrl = buildSearchUrl(r.type, r.search_query);
-      linkHtml = `<div class="resource-search">🔍 <a href="${escapeAttr(searchUrl)}" target="_blank" rel="noopener">${escapeHtml(r.search_query)}</a></div>`;
+function renderResources(resources, groundingMetadata) {
+  if (!resources || resources.length === 0) {
+    // resources가 비어있어도 grounding chunks가 있으면 그것을 표시
+    if (groundingMetadata?.groundingChunks?.length > 0) {
+      return renderGroundingFallback(groundingMetadata);
     }
+    return '';
+  }
+
+  // 유효한 URL 가진 자료만 필터링
+  const validResources = resources
+    .filter(r => isValidUrl(r.url))
+    .map(r => {
+      const domainInfo = getDomainInfo(r.url);
+      return { ...r, _domainInfo: domainInfo };
+    })
+    .sort((a, b) => {
+      // 1차: 자료 유형 우선순위 (학술 우선)
+      const priA = RESOURCE_META[a.type]?.priority || 99;
+      const priB = RESOURCE_META[b.type]?.priority || 99;
+      if (priA !== priB) return priA - priB;
+      // 2차: 도메인 신뢰도
+      return (b._domainInfo?.weight || 0) - (a._domainInfo?.weight || 0);
+    });
+
+  if (validResources.length === 0) {
+    return `
+      <div class="disclaimer">
+        ⚠️ Google 검색에서 신뢰할 만한 직접 링크를 찾지 못했습니다.
+        대신 책 제목으로 직접 검색해보시거나, 잠시 후 다시 시도해주세요.
+      </div>`;
+  }
+
+  const cards = validResources.map(r => {
+    const meta = RESOURCE_META[r.type] || { icon: '🔗', label: '자료' };
+    const domain = r._domainInfo;
+    const isTrusted = domain?.trusted;
+    const sourceName = r.source_name || domain?.label || domain?.domain || '';
 
     return `
-      <div class="resource-card">
+      <div class="resource-card ${isTrusted ? 'trusted' : ''}">
         <div class="resource-icon">${meta.icon}</div>
         <div class="resource-body">
-          <div class="resource-type">${meta.label}</div>
+          <div class="resource-header">
+            <span class="resource-type">${meta.label}</span>
+            ${isTrusted ? `<span class="trust-badge">✓ ${escapeHtml(sourceName)}</span>` : `<span class="trust-badge untrusted">${escapeHtml(sourceName)}</span>`}
+          </div>
           <div class="resource-title">${escapeHtml(r.title || '-')}</div>
           ${r.description ? `<div class="resource-desc">${escapeHtml(r.description)}</div>` : ''}
-          ${linkHtml}
+          ${r.credibility_signal ? `<div class="credibility">📊 ${escapeHtml(r.credibility_signal)}</div>` : ''}
+          <a class="resource-link" href="${escapeAttr(r.url)}" target="_blank" rel="noopener">${escapeHtml(r.url)} ↗</a>
         </div>
       </div>`;
   }).join('');
 
+  // Grounding 출처 정보 (Google 공식 표시 요구사항)
+  let groundingFooter = '';
+  if (groundingMetadata?.searchEntryPoint?.renderedContent) {
+    groundingFooter = `
+      <div class="grounding-footer">
+        <div class="grounding-label">🔍 Google 검색으로 검증된 자료입니다</div>
+        <div class="search-suggestions">${groundingMetadata.searchEntryPoint.renderedContent}</div>
+      </div>`;
+  }
+
   return `
     <div class="resources">${cards}</div>
+    ${groundingFooter}
     <div class="disclaimer">
-      ⚠️ AI가 생성한 자료 추천입니다. 직접 링크는 확인된 자료에 한해 제공되며, 그 외에는 검색 쿼리로 제공됩니다. 실제 자료의 존재·품질은 직접 확인해주세요.
+      ✅ 위 링크는 Google 검색을 통해 실제 존재하는 자료로 확인된 URL입니다.
+      다만 자료의 학술적 품질·관련성은 직접 확인을 권장합니다.
     </div>`;
+}
+
+function renderGroundingFallback(groundingMetadata) {
+  const chunks = groundingMetadata.groundingChunks || [];
+  if (chunks.length === 0) return '';
+
+  const cards = chunks.slice(0, 6).map(chunk => {
+    const web = chunk.web || {};
+    const url = web.uri || '';
+    const title = web.title || url;
+    if (!isValidUrl(url)) return '';
+    const domain = getDomainInfo(url);
+    const isTrusted = domain?.trusted;
+    return `
+      <div class="resource-card ${isTrusted ? 'trusted' : ''}">
+        <div class="resource-icon">🔗</div>
+        <div class="resource-body">
+          <div class="resource-header">
+            <span class="resource-type">검색 결과</span>
+            ${isTrusted ? `<span class="trust-badge">✓ ${escapeHtml(domain.label)}</span>` : ''}
+          </div>
+          <div class="resource-title">${escapeHtml(title)}</div>
+          <a class="resource-link" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)} ↗</a>
+        </div>
+      </div>`;
+  }).filter(Boolean).join('');
+
+  return `<div class="resources">${cards}</div>`;
 }
 
 function renderResult(r) {
@@ -908,9 +1148,9 @@ function renderResult(r) {
       <div class="result-section">
         <h2>비평적 시각</h2>
         <p class="info-text">${escapeHtml(r.critical_view)}</p>
-        ${r.resources && r.resources.length > 0 ? `
+        ${(r.resources && r.resources.length > 0) || r._groundingMetadata ? `
           <h2 style="margin-top:20px;">📚 참조 자료</h2>
-          ${renderResources(r.resources)}
+          ${renderResources(r.resources || [], r._groundingMetadata)}
         ` : ''}
       </div>
 
