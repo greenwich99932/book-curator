@@ -470,8 +470,9 @@ async function analyzeBook() {
       }],
       generationConfig: {
         temperature: 0.7,
-        maxOutputTokens: 4096,
-        responseMimeType: 'application/json'
+        maxOutputTokens: 8192,
+        responseMimeType: 'application/json',
+        thinkingConfig: { thinkingBudget: 0 }  // thinking 토큰 비활성화 (속도↑, 출력 공간 확보)
       }
     };
 
@@ -498,7 +499,18 @@ async function analyzeBook() {
     if (!responseText) throw new Error('빈 응답을 받았습니다.');
 
     const cleaned = responseText.replace(/```json\s*|```\s*/g, '').trim();
-    const result = JSON.parse(cleaned);
+    let result;
+    try {
+      result = JSON.parse(cleaned);
+    } catch (parseErr) {
+      // JSON이 잘렸을 때 복구 시도
+      result = tryRecoverTruncatedJson(cleaned);
+      if (!result) {
+        throw new Error(`응답이 너무 길어 JSON이 잘렸습니다. 다시 시도해주세요. (원본 오류: ${parseErr.message})`);
+      }
+      // 부분 복구 성공 알림
+      showError('⚠️ 응답이 일부 잘렸지만 복구해서 표시합니다. 일부 항목(특히 끝부분)이 누락될 수 있어요.');
+    }
 
     renderResult(result);
     $('resetBtn').classList.remove('hidden');
@@ -508,6 +520,49 @@ async function analyzeBook() {
   } finally {
     $('loading').classList.add('hidden');
   }
+}
+
+// ====== JSON 복구 (응답 잘림 대응) ======
+
+function tryRecoverTruncatedJson(text) {
+  // 전략: 마지막으로 완전한 객체/배열까지만 잘라내고 닫는 괄호를 보강
+  // 1) 가장 먼저 끝까지 통째 닫기 시도
+  for (let trim = 0; trim < text.length; trim++) {
+    let candidate = text.slice(0, text.length - trim);
+    // 마지막 쉼표 제거
+    candidate = candidate.replace(/,\s*$/, '');
+    // 미완성 문자열 끊기 (마지막 따옴표 짝 맞추기)
+    const lastQuote = candidate.lastIndexOf('"');
+    const beforeQuote = candidate.slice(0, lastQuote);
+    const quoteCount = (beforeQuote.match(/(?<!\\)"/g) || []).length;
+    if (quoteCount % 2 === 1) {
+      // 마지막 따옴표가 열린 상태 → 그 따옴표 직전까지 자르기
+      candidate = candidate.slice(0, lastQuote).replace(/,\s*$/, '');
+    }
+    // 괄호 수 세기
+    let braces = 0, brackets = 0;
+    let inStr = false, escape = false;
+    for (const c of candidate) {
+      if (escape) { escape = false; continue; }
+      if (c === '\\') { escape = true; continue; }
+      if (c === '"') { inStr = !inStr; continue; }
+      if (inStr) continue;
+      if (c === '{') braces++;
+      else if (c === '}') braces--;
+      else if (c === '[') brackets++;
+      else if (c === ']') brackets--;
+    }
+    if (braces < 0 || brackets < 0) continue;
+    // 닫는 괄호 보강
+    let closed = candidate.replace(/,\s*$/, '');
+    closed += ']'.repeat(brackets);
+    closed += '}'.repeat(braces);
+    try {
+      return JSON.parse(closed);
+    } catch { /* 계속 시도 */ }
+    if (trim > 2000) break; // 너무 많이 자르면 포기
+  }
+  return null;
 }
 
 // ====== 결과 렌더링 ======
