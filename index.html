@@ -166,6 +166,11 @@
   .analyze-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .loading { text-align: center; padding: 30px; color: #a0a0c0; }
+  .loading-hint {
+    font-size: 11px;
+    color: #6b6b8a;
+    margin-top: 8px;
+  }
   .spinner {
     display: inline-block;
     width: 32px; height: 32px;
@@ -351,7 +356,8 @@
 
   <div class="loading hidden" id="loading">
     <div class="spinner"></div>
-    <div>책을 살펴보고 있습니다…</div>
+    <div id="loadingStatus">책을 살펴보고 있습니다…</div>
+    <div class="loading-hint">서버 혼잡 시 자동으로 재시도합니다 (최대 30초)</div>
   </div>
 
   <div id="errorBox"></div>
@@ -362,10 +368,19 @@
 
 <script>
 // ============================================================
-// 책 큐레이션 AI v2 - 동적 메뉴 + 참조 자료
+// 책 큐레이션 AI v3 - 자동 재시도 + 모델 폴백
 // ============================================================
 
-const MODEL = 'gemini-2.5-flash';
+// 모델 폴백 순서: 첫 번째 실패 시 다음 모델로
+const MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash'
+];
+
+// 재시도 가능한 HTTP 상태 코드
+const RETRYABLE_STATUS = [429, 500, 502, 503, 504];
+const MAX_RETRIES_PER_MODEL = 2;  // 모델당 최대 재시도 횟수
 
 const SYSTEM_PROMPT = `당신은 한국과 세계의 모든 분야 도서에 정통한 서점 큐레이터이자 비평가입니다.
 독자가 책 표지나 매대 사진을 보여주면, 그 책을 식별하고 깊이 있는 큐레이션을 제공합니다.
@@ -613,59 +628,35 @@ async function analyzeBook() {
   $('errorBox').innerHTML = '';
   $('resultBox').innerHTML = '';
 
-  try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
-
-    const requestBody = {
-      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-      contents: [{
-        role: 'user',
-        parts: [
-          { inlineData: { mimeType: currentImageType, data: currentImageData } },
-          { text: USER_PROMPT }
-        ]
-      }],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 8192,
-        responseMimeType: 'application/json',
-        thinkingConfig: { thinkingBudget: 0 }  // thinking 토큰 비활성화 (속도↑, 출력 공간 확보)
-      }
-    };
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody)
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      let errMsg = `API 오류 (${response.status})`;
-      try {
-        const errJson = JSON.parse(errText);
-        errMsg += `: ${errJson.error?.message || errText}`;
-      } catch { errMsg += `: ${errText}`; }
-      throw new Error(errMsg);
+  const requestBody = {
+    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    contents: [{
+      role: 'user',
+      parts: [
+        { inlineData: { mimeType: currentImageType, data: currentImageData } },
+        { text: USER_PROMPT }
+      ]
+    }],
+    generationConfig: {
+      temperature: 0.7,
+      maxOutputTokens: 8192,
+      responseMimeType: 'application/json',
+      thinkingConfig: { thinkingBudget: 0 }
     }
+  };
 
-    const data = await response.json();
-    const responseText = data.candidates?.[0]?.content?.parts
-      ?.filter(p => p.text).map(p => p.text).join('') || '';
-
-    if (!responseText) throw new Error('빈 응답을 받았습니다.');
+  try {
+    const responseText = await callGeminiWithFallback(apiKey, requestBody);
 
     const cleaned = responseText.replace(/```json\s*|```\s*/g, '').trim();
     let result;
     try {
       result = JSON.parse(cleaned);
     } catch (parseErr) {
-      // JSON이 잘렸을 때 복구 시도
       result = tryRecoverTruncatedJson(cleaned);
       if (!result) {
         throw new Error(`응답이 너무 길어 JSON이 잘렸습니다. 다시 시도해주세요. (원본 오류: ${parseErr.message})`);
       }
-      // 부분 복구 성공 알림
       showError('⚠️ 응답이 일부 잘렸지만 복구해서 표시합니다. 일부 항목(특히 끝부분)이 누락될 수 있어요.');
     }
 
@@ -676,7 +667,93 @@ async function analyzeBook() {
     $('analyzeBtn').classList.remove('hidden');
   } finally {
     $('loading').classList.add('hidden');
+    updateLoadingStatus('');
   }
+}
+
+// ====== 재시도 + 모델 폴백 ======
+
+function updateLoadingStatus(msg) {
+  const statusEl = $('loadingStatus');
+  if (statusEl) statusEl.textContent = msg;
+}
+
+async function callGeminiWithFallback(apiKey, requestBody) {
+  let lastError = null;
+
+  for (let modelIdx = 0; modelIdx < MODELS.length; modelIdx++) {
+    const model = MODELS[modelIdx];
+
+    for (let attempt = 0; attempt <= MAX_RETRIES_PER_MODEL; attempt++) {
+      try {
+        // 상태 표시
+        if (modelIdx === 0 && attempt === 0) {
+          updateLoadingStatus('책을 살펴보고 있습니다…');
+        } else if (attempt > 0) {
+          updateLoadingStatus(`서버 혼잡으로 재시도 중… (${model}, ${attempt}/${MAX_RETRIES_PER_MODEL})`);
+        } else {
+          updateLoadingStatus(`다른 모델로 재시도 중… (${model})`);
+        }
+
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody)
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const responseText = data.candidates?.[0]?.content?.parts
+            ?.filter(p => p.text).map(p => p.text).join('') || '';
+          if (!responseText) throw new Error('빈 응답을 받았습니다.');
+          return responseText;
+        }
+
+        // 응답 에러 처리
+        const errText = await response.text();
+        let errMsg = `API 오류 (${response.status})`;
+        try {
+          const errJson = JSON.parse(errText);
+          errMsg += `: ${errJson.error?.message || errText}`;
+        } catch { errMsg += `: ${errText}`; }
+
+        // 재시도 불가능한 오류면 즉시 throw (401, 403, 400 등)
+        if (!RETRYABLE_STATUS.includes(response.status)) {
+          throw new Error(errMsg);
+        }
+
+        lastError = new Error(errMsg);
+
+        // 재시도 가능한 오류 → 백오프 후 재시도
+        if (attempt < MAX_RETRIES_PER_MODEL) {
+          const delay = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 500, 8000);
+          await sleep(delay);
+        }
+      } catch (err) {
+        // 네트워크 오류 등
+        lastError = err;
+        if (err.message.includes('API 오류') && !RETRYABLE_STATUS.some(s => err.message.includes(`(${s})`))) {
+          throw err;  // 인증 오류 등은 즉시 throw
+        }
+        if (attempt < MAX_RETRIES_PER_MODEL) {
+          const delay = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 500, 8000);
+          await sleep(delay);
+        }
+      }
+    }
+    // 이 모델 재시도 모두 실패 → 다음 모델로
+  }
+
+  // 모든 모델 실패
+  throw new Error(
+    `모든 모델에서 실패했습니다. Google 서버가 일시적으로 혼잡한 상태입니다. ` +
+    `잠시 후 다시 시도해주세요.\n마지막 오류: ${lastError?.message || '알 수 없음'}`
+  );
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 // ====== JSON 복구 (응답 잘림 대응) ======
