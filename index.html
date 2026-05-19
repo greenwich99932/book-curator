@@ -63,6 +63,65 @@
   }
   .api-key-section .hint a { color: #6c8dff; }
 
+  .api-key-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .api-key-row input { flex: 1; }
+  .key-btn {
+    padding: 10px 12px;
+    background: rgba(255,255,255,0.08);
+    color: #e8e8e8;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .key-btn:hover { background: rgba(255,255,255,0.14); }
+  .key-btn-danger:hover { background: rgba(255,80,80,0.2); border-color: rgba(255,80,80,0.4); }
+
+  .key-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+  }
+  .checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #b0b0c8;
+    cursor: pointer;
+    margin: 0 !important;
+  }
+  .checkbox-label input[type="checkbox"] {
+    width: auto !important;
+    margin: 0;
+    cursor: pointer;
+    accent-color: #6c8dff;
+  }
+  .key-status {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 10px;
+    font-weight: 500;
+  }
+  .key-status.saved {
+    background: rgba(108, 255, 170, 0.12);
+    color: #6cffaa;
+    border: 1px solid rgba(108, 255, 170, 0.3);
+  }
+  .key-status.unsaved {
+    background: rgba(160, 160, 192, 0.1);
+    color: #a0a0c0;
+    border: 1px solid rgba(160, 160, 192, 0.2);
+  }
+
   .upload-area {
     border: 2px dashed rgba(255,255,255,0.2);
     border-radius: 16px;
@@ -260,7 +319,18 @@
 
   <div class="api-key-section">
     <label>🔑 Google AI Studio API Key</label>
-    <input type="password" id="apiKey" placeholder="AIza..." />
+    <div class="api-key-row">
+      <input type="password" id="apiKey" placeholder="AIza..." />
+      <button type="button" id="toggleKeyVisibility" class="key-btn" title="키 보기/숨기기">👁️</button>
+      <button type="button" id="clearKey" class="key-btn key-btn-danger hidden" title="저장된 키 삭제">🗑️</button>
+    </div>
+    <div class="key-controls">
+      <label class="checkbox-label">
+        <input type="checkbox" id="rememberKey" />
+        <span>이 기기에 키 저장 (개인 기기에서만 사용)</span>
+      </label>
+      <span id="keyStatus" class="key-status"></span>
+    </div>
     <p class="hint">
       무료 발급: <a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com/app/apikey</a> · 카드 등록 불필요 · 일 1,500회 무료
     </p>
@@ -389,12 +459,99 @@ const $ = (id) => document.getElementById(id);
 let currentImageData = null;
 let currentImageType = null;
 
-// API 키 세션 저장
-const savedKey = sessionStorage.getItem('gemini_api_key');
-if (savedKey) $('apiKey').value = savedKey;
-$('apiKey').addEventListener('change', (e) => {
-  sessionStorage.setItem('gemini_api_key', e.target.value);
+// API 키 영구 저장 로직
+const STORAGE_KEY = 'gemini_api_key';
+const REMEMBER_FLAG = 'gemini_api_key_remember';
+
+const apiKeyInput = $('apiKey');
+const rememberCheckbox = $('rememberKey');
+const clearKeyBtn = $('clearKey');
+const toggleVisBtn = $('toggleKeyVisibility');
+const keyStatus = $('keyStatus');
+
+// 초기 로드: localStorage에 저장된 키가 있으면 자동 입력
+function loadStoredKey() {
+  const remembered = localStorage.getItem(REMEMBER_FLAG) === 'true';
+  const storedKey = remembered ? localStorage.getItem(STORAGE_KEY) : sessionStorage.getItem(STORAGE_KEY);
+
+  if (storedKey) {
+    apiKeyInput.value = storedKey;
+  }
+  rememberCheckbox.checked = remembered;
+  updateKeyStatus();
+}
+
+function updateKeyStatus() {
+  const hasKey = apiKeyInput.value.trim().length > 0;
+  const remembered = rememberCheckbox.checked;
+
+  if (hasKey && remembered) {
+    keyStatus.textContent = '✓ 저장됨';
+    keyStatus.className = 'key-status saved';
+    clearKeyBtn.classList.remove('hidden');
+  } else if (hasKey) {
+    keyStatus.textContent = '세션에만 유지';
+    keyStatus.className = 'key-status unsaved';
+    clearKeyBtn.classList.add('hidden');
+  } else {
+    keyStatus.textContent = '미입력';
+    keyStatus.className = 'key-status unsaved';
+    clearKeyBtn.classList.add('hidden');
+  }
+}
+
+// 키 입력/변경 시 저장
+apiKeyInput.addEventListener('input', () => {
+  const key = apiKeyInput.value.trim();
+  if (rememberCheckbox.checked) {
+    localStorage.setItem(STORAGE_KEY, key);
+    sessionStorage.removeItem(STORAGE_KEY);  // 중복 저장 방지
+  } else {
+    sessionStorage.setItem(STORAGE_KEY, key);
+  }
+  updateKeyStatus();
 });
+
+// 체크박스 토글: localStorage ↔ sessionStorage 전환
+rememberCheckbox.addEventListener('change', () => {
+  const key = apiKeyInput.value.trim();
+  if (rememberCheckbox.checked) {
+    localStorage.setItem(REMEMBER_FLAG, 'true');
+    if (key) localStorage.setItem(STORAGE_KEY, key);
+    sessionStorage.removeItem(STORAGE_KEY);
+  } else {
+    // 영구 저장 해제 → localStorage에서 삭제, 세션에는 유지
+    localStorage.removeItem(REMEMBER_FLAG);
+    localStorage.removeItem(STORAGE_KEY);
+    if (key) sessionStorage.setItem(STORAGE_KEY, key);
+  }
+  updateKeyStatus();
+});
+
+// 키 삭제 버튼
+clearKeyBtn.addEventListener('click', () => {
+  if (!confirm('저장된 API 키를 삭제하시겠습니까?')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(REMEMBER_FLAG);
+  sessionStorage.removeItem(STORAGE_KEY);
+  apiKeyInput.value = '';
+  rememberCheckbox.checked = false;
+  updateKeyStatus();
+});
+
+// 키 보기/숨기기 토글
+toggleVisBtn.addEventListener('click', () => {
+  if (apiKeyInput.type === 'password') {
+    apiKeyInput.type = 'text';
+    toggleVisBtn.textContent = '🙈';
+  } else {
+    apiKeyInput.type = 'password';
+    toggleVisBtn.textContent = '👁️';
+  }
+});
+
+// 초기화
+loadStoredKey();
 
 // 업로드 처리
 const uploadArea = $('uploadArea');
