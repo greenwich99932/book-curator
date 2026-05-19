@@ -398,8 +398,8 @@
 
   <div class="loading hidden" id="loading">
     <div class="spinner"></div>
-    <div id="loadingStatus">책을 살펴보고 있습니다…</div>
-    <div class="loading-hint">서버 혼잡 시 자동으로 재시도합니다 (최대 30초)</div>
+    <div id="loadingStatus">책을 식별하고 자료를 검색 중…</div>
+    <div class="loading-hint">학술 자료를 우선 검색합니다 · 10-20초 소요</div>
   </div>
 
   <div id="errorBox"></div>
@@ -413,131 +413,80 @@
 // 책 큐레이션 AI v3 - 자동 재시도 + 모델 폴백
 // ============================================================
 
-// 모델 폴백 순서: 첫 번째 실패 시 다음 모델로
+// 모델 폴백 순서: lite를 1순위로 (빠르고 무료 한도 여유)
 const MODELS = [
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-lite',
-  'gemini-2.0-flash'
+  'gemini-2.5-flash-lite',  // 가장 빠르고 한도 여유
+  'gemini-2.5-flash',        // 품질 백업
+  'gemini-2.0-flash'         // 최후 폴백
 ];
 
-// 재시도 가능한 HTTP 상태 코드
 const RETRYABLE_STATUS = [429, 500, 502, 503, 504];
-const MAX_RETRIES_PER_MODEL = 2;  // 모델당 최대 재시도 횟수
+const MAX_RETRIES_PER_MODEL = 2;
 
-const SYSTEM_PROMPT = `당신은 한국과 세계의 모든 분야 도서에 정통한 서점 큐레이터이자 비평가입니다.
-독자가 책 표지나 매대 사진을 보여주면, 그 책을 식별하고 깊이 있는 큐레이션을 제공합니다.
+const SYSTEM_PROMPT = `당신은 한국·세계 도서에 정통한 큐레이터이자 비평가입니다.
+독자가 책 표지 사진을 보여주면, 그 책을 식별하고 깊이 있는 큐레이션을 제공합니다.
 
-【중요 원칙】
+【원칙】
 
-1. **장르 적응**: 책의 장르와 성격에 따라 분석 섹션의 명칭을 달리합니다.
-   - 소설/문학 → "문학사적 위치"
-   - 철학·사상 → "사상사적 좌표"
-   - 경제·경영 → "시장·산업적 맥락"
-   - 자기계발 → "동시대 담론에서의 위치"
-   - 과학 → "과학사적 의의"
-   - 역사 → "역사학적 위치"
-   - 사회학 → "사회과학적 맥락"
-   - 법·정치 → "제도사적·정책적 맥락"
-   - 종교·신학 → "신학적·교회사적 위치"
-   - 예술·미학 → "예술사적 좌표"
-   - 시 → "시사(詩史)적 위치"
-   - 에세이 → "동시대 문화적 맥락"
+1. **장르별 섹션명**: 책의 장르에 맞춰 분석 섹션 명칭을 정합니다.
+   소설→"문학사적 위치", 철학→"사상사적 좌표", 경제·경영→"시장·산업적 맥락",
+   자기계발→"동시대 담론에서의 위치", 과학→"과학사적 의의", 역사→"역사학적 위치",
+   사회→"사회과학적 맥락", 법·정치→"제도사적·정책적 맥락",
+   종교→"신학적·교회사적 위치", 예술→"예술사적 좌표", 시→"시사(詩史)적 위치"
 
-2. **균형 잡힌 비평**: 호평과 비판을 함께 제시합니다.
+2. **균형 잡힌 비평** (호평+비판 함께)
 
-3. **추천 도서 3종 구성**:
-   - similar (유사): 같은 주제·정서를 더 깊이 탐구한 책
-   - contrast (대조): 같은 주제를 반대 입장에서 다룬 책
-   - deeper (심화): 이론적·역사적 배경을 이해할 수 있는 책
+3. **추천 도서 3종**: similar(유사 주제 심화), contrast(반대 입장), deeper(이론적 배경)
 
-4. **참조 자료 — Google Search Grounding 적극 활용 (핵심 요구사항)**:
+4. **참조 자료 — google_search 도구 사용**:
 
-   당신은 google_search 도구를 사용할 수 있습니다. 이 도구를 적극 활용하여 다음을 수행하세요:
+   ⚡ **빠른 수집 모드**: 최대 2회의 통합 검색만 수행하세요.
+   - 검색 1: "[책 제목] 비평 OR 서평 OR 논문" (한글)
+   - 검색 2: "[저자명] [책 제목 영문] review academic" (영문, 번역서인 경우)
 
-   **검색 전략 (우선순위 순서)**:
-   1순위 - **학술 자료** (반드시 최소 2개): 다음 검색 쿼리를 직접 실행하세요
-      - "[책 제목] [저자] 논문"
-      - "[책 제목] [저자] scholar"
-      - "[책 제목] 학술 비평"
-      - "[저자명] criticism academic"
+   검색 결과에서 **실제 URL** 4개를 선별:
+   - 학술 자료 최소 1개 (가능하면 2개)
+   - 언론 기사 또는 서평지 1-2개
+   - YouTube 영상 또는 블로그 1개
 
-   2순위 - **YouTube 영상·강연**: 다음 검색 쿼리 실행
-      - "[책 제목] [저자] 강연"
-      - "[책 제목] 리뷰 youtube"
-      - "[저자명] interview lecture"
+   ⚠️ **반드시 검색 결과의 실제 URL만 사용**. URL을 절대 만들지 마세요.
+   ⚠️ 검색 결과 부족하면 적게 제공해도 됩니다. 가짜 URL 금지.
 
-   3순위 - **언론 기사 (주요 매체)**: 다음 검색 쿼리 실행
-      - "[책 제목] [저자] 한겨레 OR 조선일보 OR 중앙일보 OR 경향신문"
-      - "[책 제목] review NYT OR Guardian OR New Yorker"
-
-   4순위 - **서평지·블로그**: 채널예스, 라디오북, 알라딘 서재 등
-
-   **신뢰성 평가 기준**:
-   - 학술 자료: dbpia.co.kr, kiss.kstudy.com, riss.kr, scholar.google.com, jstor.org, springer.com, .edu, .ac.kr 도메인 우대
-   - 언론: 주요 일간지·주간지·전문지 우대 (블로그성 매체 회피)
-   - YouTube: 구독자/조회수 많은 채널 (학술 채널, 출판사 공식 채널, 유명 비평가) 우대
-   - 출판사 공식·저자 공식 사이트 우대
-
-   **반드시 지킬 것**:
-   - 검색 결과에서 찾은 **실제 URL만** 제공하세요. URL을 절대 만들어내지 마세요.
-   - 검색 결과가 없거나 신뢰성이 의심되면 그 항목은 빈 배열로 두세요. 가짜 URL을 만들지 마세요.
-   - 학술 자료는 반드시 2개 이상 포함하도록 노력하세요 (사용자 우선순위).
-   - 영문/한글 자료 모두 검색하세요 (책이 번역서면 원서 비평도 함께).
-
-5. **솔직함**: 식별 불가능하면 그렇게 답하고, 추측은 "추정"임을 명시합니다.
+5. **솔직함**: 식별 불가능하면 솔직히 답하기.
 
 【출력 형식】
-JSON 형식만 사용하세요. 단, google_search 도구를 사용해야 하므로 일반 텍스트 응답으로 JSON을 출력하세요 (responseMimeType은 grounding과 함께 사용 불가).
-
-응답은 반드시 다음 형식의 JSON으로만 시작하고 끝나야 하며, JSON 앞뒤에 어떤 설명도 추가하지 마세요. 마크다운 코드블록도 사용하지 마세요:
+JSON만 출력. 마크다운 코드블록 금지. 다른 설명 텍스트 금지.
 
 {
-  "identified": true 또는 false,
-  "confidence": "high" | "medium" | "low",
-  "title": "책 제목 (원어/한국어 병기)",
-  "author": "저자명",
-  "publisher_year": "출판사, 출판연도",
-  "genre": "구체적 장르 분류",
-  "context_section_label": "이 책에 맞는 맥락 섹션 명칭",
-  "summary": "2-3문장 핵심 소개",
-  "context_analysis": "3-4문장 분석",
-  "critical_view": "비평적 평가 (3-4문장)",
+  "identified": true/false,
+  "confidence": "high|medium|low",
+  "title": "원어/한국어 병기",
+  "author": "...",
+  "publisher_year": "...",
+  "genre": "...",
+  "context_section_label": "장르에 맞는 섹션명",
+  "summary": "2-3문장",
+  "context_analysis": "3-4문장",
+  "critical_view": "3-4문장",
   "recommendations": [
-    { "type": "similar", "title": "...", "author": "...", "reason": "..." },
-    { "type": "contrast", "title": "...", "author": "...", "reason": "..." },
-    { "type": "deeper", "title": "...", "author": "...", "reason": "..." }
+    {"type":"similar","title":"...","author":"...","reason":"..."},
+    {"type":"contrast","title":"...","author":"...","reason":"..."},
+    {"type":"deeper","title":"...","author":"...","reason":"..."}
   ],
   "resources": [
-    {
-      "type": "academic|video|news|blog|social|review",
-      "title": "자료의 실제 제목",
-      "description": "이 자료의 핵심 가치 (1문장)",
-      "url": "검색으로 확인한 실제 URL",
-      "source_name": "출처 명칭 (예: DBpia, YouTube - 채널명, 한겨레)",
-      "credibility_signal": "신뢰도 근거 (예: '학술 데이터베이스 등재', '주요 일간지', '구독자 50만 채널' 등)"
-    }
+    {"type":"academic|video|news|blog|review","title":"...","description":"...","url":"실제 URL","source_name":"출처","credibility_signal":"신뢰도 근거"}
   ],
-  "reading_tip": "이 책을 잘 읽는 방법 (2-3문장)"
+  "reading_tip": "2-3문장"
 }
 
-resources는 최소 4개, 최대 7개. 학술 자료를 최소 2개 포함. 검색으로 확인된 실제 URL만 사용.
+resources: 최대 5개. 학술 자료 최소 1개 포함. 검색 결과의 실제 URL만 사용.
 
-식별 불가능한 경우:
-{
-  "identified": false,
-  "reason": "이유",
-  "what_i_see": "사진에서 본 단서"
-}`;
+식별 불가능시:
+{"identified":false,"reason":"...","what_i_see":"..."}`;
 
-const USER_PROMPT = `이 사진의 책을 분석해주세요.
-
-중요: google_search 도구를 적극 사용해서 다음을 수행하세요:
-1. 책 식별 후, 그 책에 대한 학술 자료를 최소 2회 검색 (Google Scholar, DBpia 등)
-2. YouTube 강연·리뷰 영상 검색
-3. 주요 언론사 기사 검색
-4. 각 자료의 실제 URL을 검색 결과에서 추출
-
-검색이 끝나면 JSON 형식만으로 응답하세요. JSON 앞뒤에 다른 텍스트나 마크다운 코드블록을 절대 사용하지 마세요.`;
+const USER_PROMPT = `이 책 사진을 분석해주세요.
+google_search로 최대 2회 검색하여 실제 URL을 수집한 후, JSON 형식만으로 빠르게 응답하세요.
+JSON 외 다른 텍스트나 코드블록 금지.`;
 
 const $ = (id) => document.getElementById(id);
 let currentImageData = null;
@@ -709,10 +658,8 @@ async function analyzeBook() {
     // Grounding with Google Search 활성화
     tools: [{ googleSearch: {} }],
     generationConfig: {
-      temperature: 0.5,  // grounding 사용 시 일관성 위해 낮춤
-      maxOutputTokens: 8192
-      // 주의: responseMimeType은 grounding과 함께 사용할 수 없으므로 제거
-      // thinkingConfig도 도구 사용과 호환성 위해 제거
+      temperature: 0.4,  // 낮춰서 일관성 ↑, 검색 결과 충실히 따르도록
+      maxOutputTokens: 4096  // 자료 수 줄였으니 토큰도 줄임 (응답 빨라짐)
     }
   };
 
@@ -781,11 +728,11 @@ async function callGeminiWithFallback(apiKey, requestBody) {
     for (let attempt = 0; attempt <= MAX_RETRIES_PER_MODEL; attempt++) {
       try {
         if (modelIdx === 0 && attempt === 0) {
-          updateLoadingStatus('Google 검색으로 자료를 수집하고 있습니다…');
+          updateLoadingStatus('책을 식별하고 자료를 검색 중…');
         } else if (attempt > 0) {
-          updateLoadingStatus(`서버 혼잡으로 재시도 중… (${model}, ${attempt}/${MAX_RETRIES_PER_MODEL})`);
+          updateLoadingStatus(`재시도 중… (${model}, ${attempt}/${MAX_RETRIES_PER_MODEL})`);
         } else {
-          updateLoadingStatus(`다른 모델로 재시도 중… (${model})`);
+          updateLoadingStatus(`다른 모델로 재시도… (${model})`);
         }
 
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
@@ -820,7 +767,8 @@ async function callGeminiWithFallback(apiKey, requestBody) {
         lastError = new Error(errMsg);
 
         if (attempt < MAX_RETRIES_PER_MODEL) {
-          const delay = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 500, 8000);
+          // 빠른 재시도: 0.5초 → 1초 → 2초
+          const delay = Math.min(500 * Math.pow(2, attempt) + Math.random() * 300, 4000);
           await sleep(delay);
         }
       } catch (err) {
@@ -829,7 +777,7 @@ async function callGeminiWithFallback(apiKey, requestBody) {
           throw err;
         }
         if (attempt < MAX_RETRIES_PER_MODEL) {
-          const delay = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 500, 8000);
+          const delay = Math.min(500 * Math.pow(2, attempt) + Math.random() * 300, 4000);
           await sleep(delay);
         }
       }
