@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>📚 책 큐레이션 AI (Gemini)</title>
+<title>📚 책 큐레이션 AI</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -166,6 +166,64 @@
   .rec-title { font-weight: 600; margin-bottom: 4px; font-size: 15px; }
   .rec-reason { font-size: 13px; color: #b0b0c8; }
 
+  /* 참조 자료 카드 */
+  .resources { display: grid; gap: 10px; margin-top: 12px; }
+  .resource-card {
+    background: rgba(0,0,0,0.2);
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.05);
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .resource-icon {
+    font-size: 20px;
+    flex-shrink: 0;
+    width: 28px;
+    text-align: center;
+  }
+  .resource-body { flex: 1; min-width: 0; }
+  .resource-type {
+    font-size: 10px;
+    color: #6c8dff;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+  .resource-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; word-break: break-word; }
+  .resource-desc { font-size: 12px; color: #a0a0c0; margin-bottom: 6px; }
+  .resource-link {
+    display: inline-block;
+    font-size: 12px;
+    color: #6c8dff;
+    text-decoration: none;
+    word-break: break-all;
+  }
+  .resource-link:hover { text-decoration: underline; }
+  .resource-search {
+    display: inline-block;
+    font-size: 11px;
+    color: #ff9b6c;
+    background: rgba(255,155,108,0.1);
+    padding: 3px 8px;
+    border-radius: 6px;
+    margin-top: 4px;
+  }
+  .resource-search a { color: inherit; text-decoration: none; }
+  .resource-search a:hover { text-decoration: underline; }
+
+  .disclaimer {
+    font-size: 11px;
+    color: #6b6b8a;
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: rgba(255,200,100,0.05);
+    border-left: 2px solid rgba(255,200,100,0.3);
+    border-radius: 4px;
+  }
+
   .error {
     background: rgba(255,80,80,0.1);
     border: 1px solid rgba(255,80,80,0.3);
@@ -234,70 +292,111 @@
 
 <script>
 // ============================================================
-// 책 큐레이션 AI - Google Gemini API + 프롬프트 엔지니어링
+// 책 큐레이션 AI v2 - 동적 메뉴 + 참조 자료
 // ============================================================
 
 const MODEL = 'gemini-2.5-flash';
 
-const SYSTEM_PROMPT = `당신은 한국과 세계문학 양쪽에 깊이 정통한 서점 큐레이터이자 문학 비평가입니다.
-독자가 서점에서 책 표지나 매대 사진을 보여주면, 그 책을 식별하고 깊이 있는 큐레이션을 제공합니다.
+const SYSTEM_PROMPT = `당신은 한국과 세계의 모든 분야 도서에 정통한 서점 큐레이터이자 비평가입니다.
+독자가 책 표지나 매대 사진을 보여주면, 그 책을 식별하고 깊이 있는 큐레이션을 제공합니다.
 
-당신의 큐레이션 원칙:
-1. 단순한 줄거리 요약이 아니라, 책의 문학사적·사상적 위치를 짚어줍니다.
-2. 비평적 평가는 균형 잡힌 시각으로 제시합니다 (호평과 비판 모두).
-3. 추천 도서는 반드시 세 종류로 구성합니다:
+【중요 원칙】
+
+1. **장르 적응**: 책의 장르와 성격에 따라 분석 섹션의 명칭을 달리합니다. 다음 예시를 참고하되, 책에 가장 맞는 명칭을 자유롭게 만드세요.
+   - 소설/문학 → "문학사적 위치"
+   - 철학·사상 → "사상사적 좌표"
+   - 경제·경영 → "시장·산업적 맥락"
+   - 자기계발 → "동시대 담론에서의 위치"
+   - 과학 → "과학사적 의의"
+   - 역사 → "역사학적 위치"
+   - 사회학 → "사회과학적 맥락"
+   - 법·정치 → "제도사적·정책적 맥락"
+   - 종교·신학 → "신학적·교회사적 위치"
+   - 예술·미학 → "예술사적 좌표"
+   - 시 → "시사(詩史)적 위치"
+   - 에세이 → "동시대 문화적 맥락"
+
+2. **균형 잡힌 비평**: 호평과 비판을 함께 제시합니다.
+
+3. **추천 도서 3종 구성**:
    - similar (유사): 같은 주제·정서를 더 깊이 탐구한 책
    - contrast (대조): 같은 주제를 반대 입장에서 다룬 책
    - deeper (심화): 이 책의 이론적·역사적 배경을 이해할 수 있는 책
-4. 추측이 필요한 경우 명시적으로 "추정"임을 밝힙니다.
-5. 책을 식별할 수 없으면 솔직히 그렇게 답합니다.
 
-출력은 반드시 다음 JSON 형식만 따릅니다. 다른 텍스트나 마크다운 코드블록은 절대 포함하지 마세요.
+4. **참조 자료 (매우 중요)**: 비평적 시각을 보완할 외부 자료를 추천합니다.
+
+   ⚠️ URL 환각 방지 규칙:
+   - URL은 100% 확실히 존재하고 안정적으로 유지될 자료만 제공하세요.
+   - 불확실하면 URL을 절대 만들지 말고, "search_query" 필드에 검색 쿼리만 제공하세요.
+   - 검증된 URL만 허용: 위키백과, 주요 언론사 메인 페이지(NYT, Guardian, 조선·중앙·한겨레·경향 등), 출판사 공식 페이지, 저자 공식 웹사이트, 잘 알려진 학자/비평가의 공식 페이지
+   - 확실하지 않은 모든 경우 → URL 대신 search_query 사용
+
+   자료 유형(type):
+   - "academic": 논문, 학술 자료 → 보통 search_query만 제공 (Google Scholar 등에서 찾도록)
+   - "video": YouTube 영상, 강연 → 채널명과 search_query 위주
+   - "news": 언론 기사 → 매체명 명시
+   - "blog": 비평가 블로그, 개인 사이트
+   - "social": X(트위터), SNS 토론
+   - "review": 독립 서평지, 문학잡지
+
+5. **솔직함**: 식별 불가능하면 그렇게 답하고, 추측은 "추정"임을 명시합니다.
+
+【출력 형식】
+반드시 다음 JSON 형식만 따르세요. 마크다운 코드블록 사용 금지.
 
 {
   "identified": true 또는 false,
   "confidence": "high" | "medium" | "low",
-  "title": "책 제목 (원어와 한국어 병기)",
+  "title": "책 제목 (원어/한국어 병기)",
   "author": "저자명",
-  "publisher_year": "출판사, 출판연도 (확실하지 않으면 '추정: ...')",
-  "genre": "장르·분류",
-  "summary": "2-3문장의 핵심 소개",
-  "literary_position": "이 책의 문학사적·사상적 위치 (3-4문장)",
-  "critical_view": "비평적 평가, 호평과 비판을 균형 있게 (3-4문장)",
+  "publisher_year": "출판사, 출판연도",
+  "genre": "구체적 장르 분류",
+  "context_section_label": "이 책에 맞는 맥락 섹션 명칭 (예: 문학사적 위치, 사상사적 좌표 등)",
+  "summary": "2-3문장 핵심 소개",
+  "context_analysis": "위 context_section_label에 해당하는 3-4문장 분석",
+  "critical_view": "비평적 평가, 호평과 비판 균형 (3-4문장)",
   "recommendations": [
-    { "type": "similar", "title": "책 제목", "author": "저자", "reason": "추천 이유 (1-2문장)" },
-    { "type": "contrast", "title": "책 제목", "author": "저자", "reason": "추천 이유 (1-2문장)" },
-    { "type": "deeper", "title": "책 제목", "author": "저자", "reason": "추천 이유 (1-2문장)" }
+    { "type": "similar", "title": "...", "author": "...", "reason": "..." },
+    { "type": "contrast", "title": "...", "author": "...", "reason": "..." },
+    { "type": "deeper", "title": "...", "author": "...", "reason": "..." }
   ],
-  "reading_tip": "이 책을 가장 잘 읽는 방법에 대한 짧은 조언 (2-3문장)"
+  "resources": [
+    {
+      "type": "academic|video|news|blog|social|review",
+      "title": "자료 제목",
+      "description": "왜 참조할 가치가 있는지 1문장",
+      "url": "확실한 URL 또는 null",
+      "search_query": "URL이 null일 때 검색 쿼리"
+    }
+  ],
+  "reading_tip": "이 책을 가장 잘 읽는 방법 (2-3문장)"
 }
 
-만약 책을 식별할 수 없는 경우:
+자료(resources)는 최소 4개, 최대 6개. 가능하면 다양한 유형으로 구성.
+
+식별 불가능한 경우:
 {
   "identified": false,
-  "reason": "식별 불가 이유",
-  "what_i_see": "사진에서 보이는 단서 (제목 일부, 저자명, 디자인 특징 등)"
+  "reason": "이유",
+  "what_i_see": "사진에서 본 단서"
 }`;
 
-const USER_PROMPT = `이 사진을 분석해주세요. 서점에서 찍은 사진일 수 있습니다.
-
-만약 여러 권의 책이 있다면, 가장 두드러진 한 권을 골라 분석해주세요.
-표지가 명확하다면 그 책을, 매대 전체라면 가장 앞에 있거나 가장 큰 책을 선택합니다.
-
-JSON 형식만으로 답하세요. 마크다운 코드블록(\`\`\`)도 절대 쓰지 마세요.`;
+const USER_PROMPT = `이 사진을 분석해주세요. 책 표지 또는 서점 매대 사진일 수 있습니다.
+여러 권이 보이면 가장 두드러진 한 권을 골라주세요.
+JSON 형식만으로 답하고, 마크다운 코드블록은 절대 사용하지 마세요.`;
 
 const $ = (id) => document.getElementById(id);
 let currentImageData = null;
 let currentImageType = null;
 
-// ----- API 키 세션 저장 -----
+// API 키 세션 저장
 const savedKey = sessionStorage.getItem('gemini_api_key');
 if (savedKey) $('apiKey').value = savedKey;
 $('apiKey').addEventListener('change', (e) => {
   sessionStorage.setItem('gemini_api_key', e.target.value);
 });
 
-// ----- 이미지 업로드 처리 -----
+// 업로드 처리
 const uploadArea = $('uploadArea');
 const fileInput = $('fileInput');
 
@@ -338,14 +437,13 @@ function handleFile(file) {
   reader.readAsDataURL(file);
 }
 
-// ----- 분석 실행 -----
 $('analyzeBtn').addEventListener('click', analyzeBook);
 $('resetBtn').addEventListener('click', resetAll);
 
 async function analyzeBook() {
   const apiKey = $('apiKey').value.trim();
   if (!apiKey) {
-    showError('API Key를 먼저 입력해주세요. (https://aistudio.google.com/app/apikey 에서 무료 발급)');
+    showError('API Key를 먼저 입력해주세요.');
     return;
   }
   if (!currentImageData) {
@@ -359,31 +457,21 @@ async function analyzeBook() {
   $('resultBox').innerHTML = '';
 
   try {
-    // Gemini API 엔드포인트 (v1beta, generateContent)
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
     const requestBody = {
-      // 시스템 지시사항
-      systemInstruction: {
-        parts: [{ text: SYSTEM_PROMPT }]
-      },
-      // 사용자 메시지 (이미지 + 텍스트)
+      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
       contents: [{
         role: 'user',
         parts: [
-          {
-            inlineData: {
-              mimeType: currentImageType,
-              data: currentImageData
-            }
-          },
+          { inlineData: { mimeType: currentImageType, data: currentImageData } },
           { text: USER_PROMPT }
         ]
       }],
       generationConfig: {
         temperature: 0.7,
-        maxOutputTokens: 2048,
-        responseMimeType: 'application/json'  // JSON 모드 강제
+        maxOutputTokens: 4096,
+        responseMimeType: 'application/json'
       }
     };
 
@@ -399,25 +487,16 @@ async function analyzeBook() {
       try {
         const errJson = JSON.parse(errText);
         errMsg += `: ${errJson.error?.message || errText}`;
-      } catch {
-        errMsg += `: ${errText}`;
-      }
+      } catch { errMsg += `: ${errText}`; }
       throw new Error(errMsg);
     }
 
     const data = await response.json();
-
-    // Gemini 응답 구조: candidates[0].content.parts[0].text
     const responseText = data.candidates?.[0]?.content?.parts
-      ?.filter(p => p.text)
-      .map(p => p.text)
-      .join('') || '';
+      ?.filter(p => p.text).map(p => p.text).join('') || '';
 
-    if (!responseText) {
-      throw new Error('빈 응답을 받았습니다. 다시 시도해주세요.');
-    }
+    if (!responseText) throw new Error('빈 응답을 받았습니다.');
 
-    // 혹시 마크다운 코드블록이 섞여 들어와도 대응
     const cleaned = responseText.replace(/```json\s*|```\s*/g, '').trim();
     const result = JSON.parse(cleaned);
 
@@ -431,7 +510,64 @@ async function analyzeBook() {
   }
 }
 
-// ----- 결과 렌더링 -----
+// ====== 결과 렌더링 ======
+
+const RESOURCE_META = {
+  academic: { icon: '📄', label: '논문·학술' },
+  video: { icon: '🎥', label: '영상·강연' },
+  news: { icon: '📰', label: '언론·기사' },
+  blog: { icon: '✍️', label: '블로그·비평' },
+  social: { icon: '💬', label: 'SNS·토론' },
+  review: { icon: '📖', label: '서평지' }
+};
+
+function buildSearchUrl(type, query) {
+  const q = encodeURIComponent(query);
+  switch (type) {
+    case 'academic': return `https://scholar.google.com/scholar?q=${q}`;
+    case 'video':    return `https://www.youtube.com/results?search_query=${q}`;
+    case 'news':     return `https://www.google.com/search?q=${q}&tbm=nws`;
+    case 'social':   return `https://twitter.com/search?q=${q}`;
+    case 'review':
+    case 'blog':
+    default:         return `https://www.google.com/search?q=${q}`;
+  }
+}
+
+function renderResources(resources) {
+  if (!resources || resources.length === 0) return '';
+
+  const cards = resources.map(r => {
+    const meta = RESOURCE_META[r.type] || { icon: '🔗', label: '자료' };
+    const hasUrl = r.url && r.url !== 'null' && /^https?:\/\//.test(r.url);
+
+    let linkHtml = '';
+    if (hasUrl) {
+      linkHtml = `<a class="resource-link" href="${escapeAttr(r.url)}" target="_blank" rel="noopener">${escapeHtml(r.url)} ↗</a>`;
+    } else if (r.search_query) {
+      const searchUrl = buildSearchUrl(r.type, r.search_query);
+      linkHtml = `<div class="resource-search">🔍 <a href="${escapeAttr(searchUrl)}" target="_blank" rel="noopener">${escapeHtml(r.search_query)}</a></div>`;
+    }
+
+    return `
+      <div class="resource-card">
+        <div class="resource-icon">${meta.icon}</div>
+        <div class="resource-body">
+          <div class="resource-type">${meta.label}</div>
+          <div class="resource-title">${escapeHtml(r.title || '-')}</div>
+          ${r.description ? `<div class="resource-desc">${escapeHtml(r.description)}</div>` : ''}
+          ${linkHtml}
+        </div>
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="resources">${cards}</div>
+    <div class="disclaimer">
+      ⚠️ AI가 생성한 자료 추천입니다. 직접 링크는 확인된 자료에 한해 제공되며, 그 외에는 검색 쿼리로 제공됩니다. 실제 자료의 존재·품질은 직접 확인해주세요.
+    </div>`;
+}
+
 function renderResult(r) {
   const box = $('resultBox');
 
@@ -449,6 +585,7 @@ function renderResult(r) {
   }
 
   const confidenceLabel = { high: '높음', medium: '보통', low: '낮음' }[r.confidence] || r.confidence;
+  const contextLabel = r.context_section_label || '맥락 분석';
 
   const recHtml = (r.recommendations || []).map(rec => {
     const typeLabel = { similar: '유사 (Similar)', contrast: '대조 (Contrast)', deeper: '심화 (Deeper)' }[rec.type] || rec.type;
@@ -475,13 +612,17 @@ function renderResult(r) {
       </div>
 
       <div class="result-section">
-        <h2>문학사적 위치</h2>
-        <p class="info-text">${escapeHtml(r.literary_position)}</p>
+        <h2>${escapeHtml(contextLabel)}</h2>
+        <p class="info-text">${escapeHtml(r.context_analysis)}</p>
       </div>
 
       <div class="result-section">
         <h2>비평적 시각</h2>
         <p class="info-text">${escapeHtml(r.critical_view)}</p>
+        ${r.resources && r.resources.length > 0 ? `
+          <h2 style="margin-top:20px;">📚 참조 자료</h2>
+          ${renderResources(r.resources)}
+        ` : ''}
       </div>
 
       <div class="result-section">
@@ -502,6 +643,7 @@ function escapeHtml(s) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
+function escapeAttr(s) { return escapeHtml(s); }
 
 function showError(msg) {
   $('errorBox').innerHTML = `<div class="error">⚠️ ${escapeHtml(msg)}</div>`;
