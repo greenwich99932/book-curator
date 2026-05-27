@@ -2,8 +2,29 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>📚 책 큐레이션 AI</title>
+
+<!-- PWA 핵심 -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1a1a2e">
+<meta name="description" content="책 표지 사진을 AI로 분석해 비평·참조 자료·추천 도서를 제공">
+
+<!-- iOS Safari PWA 지원 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="BookCurator">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+
+<!-- 일반 파비콘 -->
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+
+<!-- 오픈 그래프 (공유 시 미리보기) -->
+<meta property="og:title" content="📚 책 큐레이션 AI">
+<meta property="og:description" content="책 표지 사진으로 AI 비평·참조 자료·추천을 받아보세요">
+<meta property="og:type" content="website">
+<meta property="og:image" content="icon-512.png">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -12,7 +33,62 @@
     color: #e8e8e8;
     min-height: 100vh;
     padding: 20px;
+    padding-top: max(20px, env(safe-area-inset-top));
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
     line-height: 1.6;
+  }
+
+  /* PWA 설치 안내 */
+  .install-prompt {
+    background: linear-gradient(135deg, rgba(108,141,255,0.15) 0%, rgba(155,108,255,0.15) 100%);
+    border: 1px solid rgba(108,141,255,0.3);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    animation: slideIn 0.3s ease;
+  }
+  @keyframes slideIn {
+    from { transform: translateY(-8px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  .install-text { flex: 1; min-width: 0; }
+  .install-text strong { display: block; font-size: 14px; margin-bottom: 3px; }
+  .install-text p { font-size: 12px; color: #a0a0c0; margin: 0; }
+  .install-actions { display: flex; gap: 8px; flex-shrink: 0; }
+  .install-btn {
+    padding: 8px 16px;
+    background: linear-gradient(135deg, #6c8dff 0%, #9b6cff 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .install-btn:hover { transform: translateY(-1px); }
+  .dismiss-btn {
+    width: 28px;
+    height: 28px;
+    background: rgba(255,255,255,0.1);
+    color: #a0a0c0;
+    border: none;
+    border-radius: 50%;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .dismiss-btn:hover { background: rgba(255,255,255,0.15); color: #e8e8e8; }
+  .ios-share {
+    display: inline-block;
+    background: rgba(108,141,255,0.2);
+    padding: 1px 6px;
+    border-radius: 4px;
   }
   .container { max-width: 800px; margin: 0 auto; }
   header {
@@ -364,6 +440,27 @@
     <div class="badge">Powered by Google Gemini 2.5 Flash</div>
   </header>
 
+  <!-- PWA 설치 안내 -->
+  <div id="installPrompt" class="install-prompt hidden">
+    <div class="install-text">
+      <strong>📱 앱처럼 설치하기</strong>
+      <p>홈 화면에 추가하면 앱처럼 빠르게 실행됩니다</p>
+    </div>
+    <div class="install-actions">
+      <button id="installBtn" class="install-btn">설치</button>
+      <button id="dismissInstall" class="dismiss-btn">×</button>
+    </div>
+  </div>
+
+  <!-- iOS 사용자용 안내 (자동 설치 불가) -->
+  <div id="iosInstallGuide" class="install-prompt ios hidden">
+    <div class="install-text">
+      <strong>📱 iPhone에서 앱처럼 사용하기</strong>
+      <p>하단 공유 버튼 <span class="ios-share">⬆️</span> → "홈 화면에 추가"를 눌러주세요</p>
+    </div>
+    <button id="dismissIosInstall" class="dismiss-btn">×</button>
+  </div>
+
   <div class="api-key-section">
     <label>🔑 Google AI Studio API Key</label>
     <div class="api-key-row">
@@ -409,6 +506,77 @@
 </div>
 
 <script>
+// ============================================================
+// PWA 등록 + 설치 프롬프트
+// ============================================================
+
+// Service Worker 등록
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js')
+      .then(reg => console.log('SW registered:', reg.scope))
+      .catch(err => console.log('SW registration failed:', err));
+  });
+}
+
+// Android Chrome용 설치 프롬프트
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+
+  // 이미 거부했거나 설치된 경우 표시 안 함
+  if (localStorage.getItem('pwa_install_dismissed') === 'true') return;
+  if (window.matchMedia('(display-mode: standalone)').matches) return;
+
+  document.getElementById('installPrompt').classList.remove('hidden');
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  const installBtn = document.getElementById('installBtn');
+  const dismissInstall = document.getElementById('dismissInstall');
+  const installPrompt = document.getElementById('installPrompt');
+
+  if (installBtn) {
+    installBtn.addEventListener('click', async () => {
+      if (!deferredInstallPrompt) return;
+      deferredInstallPrompt.prompt();
+      const { outcome } = await deferredInstallPrompt.userChoice;
+      console.log('Install outcome:', outcome);
+      deferredInstallPrompt = null;
+      installPrompt.classList.add('hidden');
+    });
+  }
+
+  if (dismissInstall) {
+    dismissInstall.addEventListener('click', () => {
+      installPrompt.classList.add('hidden');
+      localStorage.setItem('pwa_install_dismissed', 'true');
+    });
+  }
+
+  // iOS Safari 감지 (beforeinstallprompt 미지원 → 별도 안내)
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const isInStandaloneMode = ('standalone' in window.navigator) && window.navigator.standalone;
+
+  if (isIOS && !isInStandaloneMode && localStorage.getItem('ios_install_dismissed') !== 'true') {
+    const iosGuide = document.getElementById('iosInstallGuide');
+    if (iosGuide) {
+      iosGuide.classList.remove('hidden');
+      document.getElementById('dismissIosInstall').addEventListener('click', () => {
+        iosGuide.classList.add('hidden');
+        localStorage.setItem('ios_install_dismissed', 'true');
+      });
+    }
+  }
+});
+
+// 설치 완료 감지
+window.addEventListener('appinstalled', () => {
+  console.log('PWA installed');
+  document.getElementById('installPrompt')?.classList.add('hidden');
+});
+
 // ============================================================
 // 책 큐레이션 AI v3 - 자동 재시도 + 모델 폴백
 // ============================================================
